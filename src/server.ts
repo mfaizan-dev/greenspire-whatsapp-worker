@@ -68,43 +68,48 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
       return;
     }
 
-    console.log("[Worker] send-bulk request:", {
-      phoneNumbers: phoneNumbers,
-      text: text,
+    const count = (phoneNumbers as string[]).length;
+    const trimmedText = text.trim();
+
+    console.log("[Worker] send-bulk accepted:", {
+      count,
       groupId: groupId ?? null,
       delaySeconds: delaySeconds ?? null,
     });
 
-    const delay =
-      typeof delaySeconds === "number" && delaySeconds > 0
-        ? Math.min(delaySeconds, 86400)
-        : 0;
-    if (delay > 0) {
-      console.log("[Worker] Staggering chunk: waiting", delay, "seconds");
-      await new Promise((r) => setTimeout(r, delay * 1000));
-    }
-
-    console.log("[Worker] send-bulk request:", {
-      count: phoneNumbers.length,
-      groupId: groupId ?? null,
-      textPreview: text.substring(0, 50) + (text.length > 50 ? "..." : ""),
-    });
-
-    const result = await sendBulkToPhones(
-      phoneNumbers as string[],
-      text.trim()
-    );
-
-    console.log("[Worker] send-bulk completed:", {
-      groupId: groupId ?? null,
-      ...result,
-    });
-
-    res.json({
+    // Respond immediately so Vercel/frontend don't wait (e.g. 500 members = long run).
+    res.status(202).json({
       success: true,
+      accepted: true,
+      count,
       groupId: groupId ?? null,
-      ...result,
+      message: "Chunk accepted; messages will be sent in the background.",
     });
+
+    // Process in background (delay + send).
+    (async () => {
+      const delay =
+        typeof delaySeconds === "number" && delaySeconds > 0
+          ? Math.min(delaySeconds, 86400)
+          : 0;
+      if (delay > 0) {
+        console.log("[Worker] Staggering chunk: waiting", delay, "seconds");
+        await new Promise((r) => setTimeout(r, delay * 1000));
+      }
+      try {
+        const result = await sendBulkToPhones(
+          phoneNumbers as string[],
+          trimmedText
+        );
+        console.log("[Worker] send-bulk completed:", {
+          groupId: groupId ?? null,
+          ...result,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[Worker] send-bulk background error:", message);
+      }
+    })();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[Worker] send-bulk error:", message);

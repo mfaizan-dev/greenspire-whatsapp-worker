@@ -9,8 +9,8 @@ function normalizePhone(to: string): string {
 
 /** 1 message at a time to respect "1 message every 5 seconds" account protection. */
 const BULK_BATCH_SIZE = 1;
-/** At least 5s between messages per WhatsApp/Wasender account protection. */
-const BULK_DELAY_MS = 5500;
+/** 6s between messages to stay clear of WhatsApp "1 message every 5 seconds" limit. */
+const BULK_DELAY_MS = 6000;
 
 export interface BulkSendResult {
   totalAttempted: number;
