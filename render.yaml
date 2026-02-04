@@ -1,0 +1,6 @@
+services:
+  - type: worker
+    name: greenspire-whatsapp-worker
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: node dist/server.js
