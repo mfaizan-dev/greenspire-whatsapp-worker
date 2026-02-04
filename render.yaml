@@ -4,4 +4,4 @@ services:
     runtime: node
     rootDir: .
     buildCommand: npm install && npm run build
-    startCommand: node dist/server.js
+    startCommand: npm start
