@@ -42,7 +42,13 @@ export async function sendBulkToPhones(
     .map((n) => normalizePhone(n))
     .filter((n) => n.length > 1);
 
+  console.log("[Worker] sendBulkToPhones: starting", {
+    inputCount: phoneNumbers.length,
+    normalizedCount: normalized.length,
+  });
+
   if (normalized.length === 0) {
+    console.log("[Worker] sendBulkToPhones: no valid phones, skipping");
     return { totalAttempted: 0, sent: 0, failed: 0 };
   }
 
@@ -77,6 +83,7 @@ export async function sendBulkToPhones(
 
     const hasMore = i + BULK_BATCH_SIZE < normalized.length;
     if (hasMore) {
+      console.log("[Worker] Waiting", BULK_DELAY_MS, "ms before next batch");
       await new Promise((r) => setTimeout(r, BULK_DELAY_MS));
     }
   }

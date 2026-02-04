@@ -37,6 +37,8 @@ function requireSecret(
  */
 app.post("/send-bulk", requireSecret, async (req, res) => {
   try {
+    console.log("[Worker] send-bulk request received:", req.body);
+
     const { phoneNumbers, text, groupId, delaySeconds } = req.body as {
       phoneNumbers?: unknown;
       text?: unknown;
@@ -48,6 +50,7 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
       !Array.isArray(phoneNumbers) ||
       !phoneNumbers.every((n) => typeof n === "string")
     ) {
+      console.log("[Worker] send-bulk validation failed: invalid phoneNumbers");
       res.status(400).json({
         success: false,
         error: "phoneNumbers must be a non-empty array of strings",
@@ -55,12 +58,22 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
       return;
     }
     if (typeof text !== "string" || !text.trim()) {
+      console.log(
+        "[Worker] send-bulk validation failed: invalid or empty text"
+      );
       res.status(400).json({
         success: false,
         error: "text is required and must be a non-empty string",
       });
       return;
     }
+
+    console.log("[Worker] send-bulk request:", {
+      phoneNumbers: phoneNumbers,
+      text: text,
+      groupId: groupId ?? null,
+      delaySeconds: delaySeconds ?? null,
+    });
 
     const delay =
       typeof delaySeconds === "number" && delaySeconds > 0
@@ -82,6 +95,11 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
       text.trim()
     );
 
+    console.log("[Worker] send-bulk completed:", {
+      groupId: groupId ?? null,
+      ...result,
+    });
+
     res.json({
       success: true,
       groupId: groupId ?? null,
@@ -99,6 +117,7 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
 
 /** GET /health - for Render health checks */
 app.get("/health", (_req, res) => {
+  console.log("[Worker] health check request received");
   res.json({ ok: true, service: "greenspire-whatsapp-worker" });
 });
 
