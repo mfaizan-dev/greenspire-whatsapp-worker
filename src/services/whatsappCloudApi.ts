@@ -43,11 +43,11 @@ export interface WhatsAppCloudError {
 export async function sendTextMessage(
   to: string,
   body: string,
-  options: SendTextOptions = {}
+  options: SendTextOptions = {},
 ): Promise<SendTextResult> {
   if (!isWhatsAppCloudConfigured()) {
     throw new Error(
-      "WhatsApp Cloud API is not configured (WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID)"
+      "WhatsApp Cloud API is not configured (WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID)",
     );
   }
   if (!WHATSAPP_ACCESS_TOKEN) {
@@ -59,10 +59,22 @@ export async function sendTextMessage(
     throw new Error("Invalid recipient phone number");
   }
 
+  console.log("[WhatsApp Cloud API] Sending text message", {
+    to: recipient.replace(/\d(?=\d{4})/g, "*"),
+    bodyLength: body.length,
+    previewUrl: Boolean(options.previewUrl),
+  });
+
   const truncatedBody =
     body.length > MAX_TEXT_BODY_LENGTH
       ? body.slice(0, MAX_TEXT_BODY_LENGTH)
       : body;
+  if (body.length > MAX_TEXT_BODY_LENGTH) {
+    console.log("[WhatsApp Cloud API] Body truncated", {
+      original: body.length,
+      max: MAX_TEXT_BODY_LENGTH,
+    });
+  }
 
   const url = getMessagesUrl();
   const payload = {
@@ -85,22 +97,40 @@ export async function sendTextMessage(
     body: JSON.stringify(payload),
   });
 
+  console.log("[WhatsApp Cloud API] Response", {
+    status: res.status,
+    to: recipient.replace(/\d(?=\d{4})/g, "*"),
+    response: await res.json(),
+  });
+
   const data = (await res.json()) as
     | { messages?: Array<{ id: string }> }
     | WhatsAppCloudError;
 
   if (!res.ok) {
     const err = data as WhatsAppCloudError;
-    const msg =
-      err?.error?.message ?? `HTTP ${res.status}: ${res.statusText}`;
+    const msg = err?.error?.message ?? `HTTP ${res.status}: ${res.statusText}`;
+    console.error("[WhatsApp Cloud API] Send failed", {
+      status: res.status,
+      to: recipient.replace(/\d(?=\d{4})/g, "*"),
+      error: msg,
+    });
     throw new Error(`WhatsApp Cloud API error: ${msg}`);
   }
 
   const success = data as { messages?: Array<{ id: string }> };
   const messageId = success?.messages?.[0]?.id;
   if (!messageId) {
+    console.error("[WhatsApp Cloud API] Unexpected response: no message ID", {
+      to: recipient.replace(/\d(?=\d{4})/g, "*"),
+      response: data,
+    });
     throw new Error("WhatsApp Cloud API did not return a message ID");
   }
 
+  console.log("[WhatsApp Cloud API] Message sent", {
+    messageId,
+    to: recipient.replace(/\d(?=\d{4})/g, "*"),
+  });
   return { messageId };
 }
