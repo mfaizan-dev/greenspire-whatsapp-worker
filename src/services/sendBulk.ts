@@ -1,16 +1,18 @@
-import { wasender, isWasenderConfigured } from "../config/wasender.js";
-import { WasenderAPIError } from "wasenderapi";
+import { isWhatsAppCloudConfigured } from "../config/whatsappCloud.js";
+import {
+  sendTextMessage,
+  toE164Digits,
+} from "./whatsappCloudApi.js";
 
-/** Normalize phone to E.164-like format for Wasender (e.g. +923001234567). */
-function normalizePhone(to: string): string {
-  const trimmed = to.trim();
-  return trimmed.startsWith("+") ? trimmed : `+${trimmed}`;
-}
-
-/** 1 message at a time to respect "1 message every 5 seconds" account protection. */
+/** 1 message at a time to respect rate limits. */
 const BULK_BATCH_SIZE = 1;
-/** 6s between messages to stay clear of WhatsApp "1 message every 5 seconds" limit. */
-const BULK_DELAY_MS = 6000;
+/** Delay between messages (Meta tier-based limits). */
+const CLOUD_API_DELAY_MS = 1000;
+
+export interface BulkSendOptions {
+  /** Enable link preview for URLs in the message. */
+  previewUrl?: boolean;
+}
 
 export interface BulkSendResult {
   totalAttempted: number;
@@ -19,36 +21,31 @@ export interface BulkSendResult {
 }
 
 /**
- * Send text message to a list of phone numbers in batches with delays.
- * Used for group WhatsApp messaging; runs to completion (await).
+ * Send text message to a list of phone numbers via WhatsApp Cloud API.
+ * @see https://developers.facebook.com/docs/whatsapp/cloud-api/messages/text-messages
  */
 export async function sendBulkToPhones(
   phoneNumbers: string[],
-  text: string
+  text: string,
+  options: BulkSendOptions = {}
 ): Promise<BulkSendResult> {
-  if (!isWasenderConfigured()) {
-    throw new Error("WhatsApp (Wasender) is not configured");
-  }
-  if (
-    !process.env.WASENDER_API_KEY &&
-    !process.env.WASENDER_PERSONAL_ACCESS_TOKEN
-  ) {
+  if (!isWhatsAppCloudConfigured()) {
     throw new Error(
-      "WASENDER_API_KEY or WASENDER_PERSONAL_ACCESS_TOKEN is required"
+      "WhatsApp Cloud API is not configured. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID."
     );
   }
 
   const normalized = phoneNumbers
-    .map((n) => normalizePhone(n))
-    .filter((n) => n.length > 1);
+    .map((n) => toE164Digits(n))
+    .filter((n) => n.length >= 10);
 
-  console.log("[Worker] sendBulkToPhones: starting", {
+  console.log("[Worker] sendBulk: starting", {
     inputCount: phoneNumbers.length,
     normalizedCount: normalized.length,
   });
 
   if (normalized.length === 0) {
-    console.log("[Worker] sendBulkToPhones: no valid phones, skipping");
+    console.log("[Worker] sendBulk: no valid phones, skipping");
     return { totalAttempted: 0, sent: 0, failed: 0 };
   }
 
@@ -59,23 +56,20 @@ export async function sendBulkToPhones(
     const batch = normalized.slice(i, i + BULK_BATCH_SIZE);
     console.log("[Worker] Batch:", {
       batchNumber: Math.floor(i / BULK_BATCH_SIZE) + 1,
-      size: batch.length,
       totalProcessed: i,
       total: normalized.length,
     });
 
     await Promise.all(
       batch.map((to) =>
-        wasender
-          .send({ messageType: "text", to, text })
+        sendTextMessage(to, text, { previewUrl: options.previewUrl })
           .then(() => {
             sent++;
             console.log("[Worker] Sent to", to);
           })
           .catch((err: unknown) => {
             failed++;
-            const msg =
-              err instanceof WasenderAPIError ? err.apiMessage : String(err);
+            const msg = err instanceof Error ? err.message : String(err);
             console.error("[Worker] Failed to send to", to, msg);
           })
       )
@@ -83,8 +77,7 @@ export async function sendBulkToPhones(
 
     const hasMore = i + BULK_BATCH_SIZE < normalized.length;
     if (hasMore) {
-      console.log("[Worker] Waiting", BULK_DELAY_MS, "ms before next batch");
-      await new Promise((r) => setTimeout(r, BULK_DELAY_MS));
+      await new Promise((r) => setTimeout(r, CLOUD_API_DELAY_MS));
     }
   }
 

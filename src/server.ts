@@ -15,7 +15,7 @@ const WORKER_SECRET = process.env.WORKER_SECRET;
 function requireSecret(
   req: express.Request,
   res: express.Response,
-  next: express.NextFunction
+  next: express.NextFunction,
 ) {
   if (!WORKER_SECRET) {
     return next();
@@ -32,18 +32,21 @@ function requireSecret(
 
 /**
  * POST /send-bulk
- * Body: { phoneNumbers: string[], text: string, groupId?: string }
- * Sends text to each phone number in batches (await). groupId is optional for logging.
+ * Body: { phoneNumbers: string[], text: string, groupId?: string, delaySeconds?: number, previewUrl?: boolean }
+ * Sends text via WhatsApp Cloud API in batches with rate limiting.
+ * groupId: optional for logging. previewUrl: enable link preview (Cloud API).
  */
 app.post("/send-bulk", requireSecret, async (req, res) => {
   try {
     console.log("[Worker] send-bulk request received:", req.body);
 
-    const { phoneNumbers, text, groupId, delaySeconds } = req.body as {
+    const { phoneNumbers, text, groupId, delaySeconds, previewUrl } = req.body as {
       phoneNumbers?: unknown;
       text?: unknown;
       groupId?: string;
       delaySeconds?: number;
+      /** Enable link preview for URLs (WhatsApp Cloud API). */
+      previewUrl?: boolean;
     };
 
     if (
@@ -59,7 +62,7 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
     }
     if (typeof text !== "string" || !text.trim()) {
       console.log(
-        "[Worker] send-bulk validation failed: invalid or empty text"
+        "[Worker] send-bulk validation failed: invalid or empty text",
       );
       res.status(400).json({
         success: false,
@@ -99,7 +102,8 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
       try {
         const result = await sendBulkToPhones(
           phoneNumbers as string[],
-          trimmedText
+          trimmedText,
+          { previewUrl: Boolean(previewUrl) },
         );
         console.log("[Worker] send-bulk completed:", {
           groupId: groupId ?? null,
