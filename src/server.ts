@@ -31,22 +31,39 @@ function requireSecret(
 }
 
 /**
- * POST /send-bulk
- * Body: { phoneNumbers: string[], text: string, groupId?: string, delaySeconds?: number, previewUrl?: boolean }
- * Sends text via WhatsApp Cloud API in batches with rate limiting.
- * groupId: optional for logging. previewUrl: enable link preview (Cloud API).
- */
+* POST /send-bulk
+* Body: {
+*   phoneNumbers: string[],
+*   text: string,
+*   groupId?: string,
+*   delaySeconds?: number,
+*   templateName: string,
+*   languageCode: string,
+*   headerText?: string
+* }
+* Sends template messages via WhatsApp Cloud API in batches with rate limiting.
+* groupId: optional for logging.
+*/
 app.post("/send-bulk", requireSecret, async (req, res) => {
   try {
     console.log("[Worker] send-bulk request received:", req.body);
 
-    const { phoneNumbers, text, groupId, delaySeconds, previewUrl } = req.body as {
+    const {
+      phoneNumbers,
+      text,
+      groupId,
+      delaySeconds,
+      templateName,
+      languageCode,
+      headerText,
+    } = req.body as {
       phoneNumbers?: unknown;
       text?: unknown;
       groupId?: string;
       delaySeconds?: number;
-      /** Enable link preview for URLs (WhatsApp Cloud API). */
-      previewUrl?: boolean;
+      templateName?: string;
+      languageCode?: string;
+      headerText?: string;
     };
 
     if (
@@ -67,6 +84,26 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
       res.status(400).json({
         success: false,
         error: "text is required and must be a non-empty string",
+      });
+      return;
+    }
+    if (typeof templateName !== "string" || !templateName.trim()) {
+      console.log(
+        "[Worker] send-bulk validation failed: invalid or empty templateName",
+      );
+      res.status(400).json({
+        success: false,
+        error: "templateName is required and must be a non-empty string",
+      });
+      return;
+    }
+    if (typeof languageCode !== "string" || !languageCode.trim()) {
+      console.log(
+        "[Worker] send-bulk validation failed: invalid or empty languageCode",
+      );
+      res.status(400).json({
+        success: false,
+        error: "languageCode is required and must be a non-empty string",
       });
       return;
     }
@@ -103,7 +140,11 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
         const result = await sendBulkToPhones(
           phoneNumbers as string[],
           trimmedText,
-          { previewUrl: Boolean(previewUrl) },
+          {
+            templateName: templateName.trim(),
+            languageCode: languageCode.trim(),
+            headerText: typeof headerText === "string" ? headerText : undefined,
+          },
         );
         console.log("[Worker] send-bulk completed:", {
           groupId: groupId ?? null,

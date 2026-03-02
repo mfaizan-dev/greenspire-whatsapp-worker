@@ -1,8 +1,5 @@
 import { isWhatsAppCloudConfigured } from "../config/whatsappCloud.js";
-import {
-  sendTextMessage,
-  toE164Digits,
-} from "./whatsappCloudApi.js";
+import { sendTextMessage, toE164Digits } from "./whatsappCloudApi.js";
 
 /** 1 message at a time to respect rate limits. */
 const BULK_BATCH_SIZE = 1;
@@ -10,8 +7,12 @@ const BULK_BATCH_SIZE = 1;
 const CLOUD_API_DELAY_MS = 1000;
 
 export interface BulkSendOptions {
-  /** Enable link preview for URLs in the message. */
-  previewUrl?: boolean;
+  /** Template name configured in WhatsApp Cloud API. */
+  templateName: string;
+  /** Language code for the template, e.g. "en" or "ur". */
+  languageCode: string;
+  /** Optional header text parameter for the template. */
+  headerText?: string;
 }
 
 export interface BulkSendResult {
@@ -27,11 +28,11 @@ export interface BulkSendResult {
 export async function sendBulkToPhones(
   phoneNumbers: string[],
   text: string,
-  options: BulkSendOptions = {}
+  options: BulkSendOptions,
 ): Promise<BulkSendResult> {
   if (!isWhatsAppCloudConfigured()) {
     throw new Error(
-      "WhatsApp Cloud API is not configured. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID."
+      "WhatsApp Cloud API is not configured. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
     );
   }
 
@@ -62,7 +63,11 @@ export async function sendBulkToPhones(
 
     await Promise.all(
       batch.map((to) =>
-        sendTextMessage(to, text, { previewUrl: options.previewUrl })
+        sendTextMessage(to, text, {
+          templateName: options.templateName,
+          languageCode: options.languageCode,
+          headerText: options.headerText,
+        })
           .then(() => {
             sent++;
             console.log("[Worker] Sent to", to);
@@ -71,8 +76,8 @@ export async function sendBulkToPhones(
             failed++;
             const msg = err instanceof Error ? err.message : String(err);
             console.error("[Worker] Failed to send to", to, msg);
-          })
-      )
+          }),
+      ),
     );
 
     const hasMore = i + BULK_BATCH_SIZE < normalized.length;

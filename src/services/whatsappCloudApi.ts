@@ -18,8 +18,12 @@ export function toE164Digits(phone: string): string {
 }
 
 export interface SendTextOptions {
-  /** Enable link preview for http(s) URLs in the body. Default false. */
-  previewUrl?: boolean;
+  /** Template name configured in WhatsApp Cloud API. */
+  templateName: string;
+  /** Language code for the template, e.g. "en" or "ur". */
+  languageCode: string;
+  /** Optional header text parameter for the template. */
+  headerText?: string;
 }
 
 export interface SendTextResult {
@@ -37,13 +41,16 @@ export interface WhatsAppCloudError {
 }
 
 /**
- * Send a single text message via WhatsApp Cloud API.
- * @see https://developers.facebook.com/docs/whatsapp/cloud-api/messages/text-messages
+ * Send a single template message via WhatsApp Cloud API.
+ * @see https://developers.facebook.com/docs/whatsapp/cloud-api/messages/message-templates
  */
 export async function sendTextMessage(
   to: string,
   body: string,
-  options: SendTextOptions = {},
+  options: SendTextOptions = {
+    templateName: "hello_world",
+    languageCode: "en",
+  },
 ): Promise<SendTextResult> {
   if (!isWhatsAppCloudConfigured()) {
     throw new Error(
@@ -62,7 +69,8 @@ export async function sendTextMessage(
   console.log("[WhatsApp Cloud API] Sending text message", {
     to: recipient.replace(/\d(?=\d{4})/g, "*"),
     bodyLength: body.length,
-    previewUrl: Boolean(options.previewUrl),
+    templateName: options.templateName,
+    languageCode: options.languageCode,
   });
 
   const truncatedBody =
@@ -77,16 +85,51 @@ export async function sendTextMessage(
   }
 
   const url = getMessagesUrl();
-  const payload = {
+
+  const components: Array<{
+    type: string;
+    parameters: Array<{ type: string; text: string }>;
+  }> = [];
+
+  if (options.headerText) {
+    components.push({
+      type: "header",
+      parameters: [
+        {
+          type: "text",
+          text: options.headerText,
+        },
+      ],
+    });
+  }
+
+  if (truncatedBody) {
+    components.push({
+      type: "body",
+      parameters: [
+        {
+          type: "text",
+          text: truncatedBody,
+        },
+      ],
+    });
+  }
+
+  const payload: any = {
     messaging_product: "whatsapp",
-    recipient_type: "individual",
     to: recipient,
-    type: "text",
-    text: {
-      preview_url: Boolean(options.previewUrl),
-      body: truncatedBody,
+    type: "template",
+    template: {
+      name: options.templateName,
+      language: {
+        code: options.languageCode,
+      },
     },
   };
+
+  if (components.length > 0) {
+    payload.template.components = components;
+  }
 
   const res = await fetch(url, {
     method: "POST",
@@ -97,13 +140,15 @@ export async function sendTextMessage(
     body: JSON.stringify(payload),
   });
 
+  const json = await res.json();
+
   console.log("[WhatsApp Cloud API] Response", {
     status: res.status,
     to: recipient.replace(/\d(?=\d{4})/g, "*"),
-    response: await res.json(),
+    response: json,
   });
 
-  const data = (await res.json()) as
+  const data = json as
     | { messages?: Array<{ id: string }> }
     | WhatsAppCloudError;
 
