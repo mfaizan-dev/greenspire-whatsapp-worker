@@ -165,6 +165,102 @@ app.post("/send-bulk", requireSecret, async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// WhatsApp Cloud API Webhook (for Meta to send message status updates, etc.)
+// Configure this URL in Meta App: WhatsApp > Configuration > Webhook
+// ---------------------------------------------------------------------------
+const WEBHOOK_VERIFY_TOKEN = process.env.WEBHOOK_VERIFY_TOKEN;
+
+/** GET /webhook - Meta verification (required when you first set the webhook URL) */
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe") {
+    // If WEBHOOK_VERIFY_TOKEN is set, Meta's token must match; if not set, any token is accepted
+    if (WEBHOOK_VERIFY_TOKEN && token !== WEBHOOK_VERIFY_TOKEN) {
+      console.warn("[Webhook] Verify token mismatch");
+      res.status(403).send("Forbidden");
+      return;
+    }
+    console.log("[Webhook] Verified successfully");
+    res.status(200).send(challenge);
+    return;
+  }
+  res.status(400).send("Bad request");
+});
+
+/** POST /webhook - Meta sends message status updates (accepted, sent, delivered, read, failed) and incoming messages */
+app.post("/webhook", (req, res) => {
+  // Always respond 200 quickly so Meta doesn't retry
+  res.status(200).send("OK");
+
+  const body = req.body as Record<string, unknown>;
+  // Debug: log full payload (helps trace why messages stay "accepted" and never "delivered")
+  console.log("[Webhook] Raw payload:", JSON.stringify(body, null, 2));
+
+  const object = body?.object;
+  if (object !== "whatsapp_business_account") {
+    console.log("[Webhook] Ignoring non-WABA object:", object);
+    return;
+  }
+
+  const entries = body?.entry as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(entries)) {
+    console.log("[Webhook] No entries in payload");
+    return;
+  }
+
+  for (const entry of entries) {
+    const id = entry?.id;
+    const changes = entry?.changes as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(changes)) continue;
+
+    for (const change of changes) {
+      const field = change?.field;
+      const value = change?.value as Record<string, unknown> | undefined;
+      if (!value) continue;
+
+      if (field === "messages") {
+        // Message status updates (accepted → sent → delivered → read) or failures
+        const statuses = value?.statuses as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(statuses)) {
+          for (const s of statuses) {
+            const msgId = s?.id;
+            const status = s?.status;
+            const recipientId = s?.recipient_id;
+            const timestamp = s?.timestamp;
+            const errors = s?.errors;
+            console.log("[Webhook] Message status:", {
+              messageId: msgId,
+              status,
+              recipientId,
+              timestamp: timestamp != null ? new Date(Number(timestamp) * 1000).toISOString() : undefined,
+              errors: errors ?? undefined,
+            });
+            if (status === "failed" && errors) {
+              console.error("[Webhook] Delivery failed:", JSON.stringify(errors));
+            }
+          }
+        }
+        // Incoming messages (if you need to log them)
+        const messages = value?.messages as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(messages)) {
+          for (const m of messages) {
+            console.log("[Webhook] Incoming message:", {
+              from: m?.from,
+              id: m?.id,
+              type: m?.type,
+              timestamp: m?.timestamp,
+            });
+          }
+        }
+      }
+    }
+  }
+});
+
 /** GET /health - for Render health checks */
 app.get("/health", (_req, res) => {
   console.log("[Worker] health check request received");
