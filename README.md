@@ -12,7 +12,6 @@ Small Node.js service that runs **background group WhatsApp messaging** (batched
 
 ```bash
 cp .env.example .env
-# Edit .env: set WASENDER_API_KEY (or WASENDER_PERSONAL_ACCESS_TOKEN)
 npm install
 npm run dev
 ```
@@ -31,7 +30,7 @@ curl -X POST http://localhost:3000/send-bulk \
 2. Connect this repo and set **Root Directory** to `greenspire-whatsapp-worker`.
 3. **Build command:** `npm install && npm run build`
 4. **Start command:** `npm start`
-5. **Environment:** add `WASENDER_API_KEY` (or `WASENDER_PERSONAL_ACCESS_TOKEN`). Optionally add `WORKER_SECRET` and set the same value as `WHATSAPP_WORKER_SECRET` on Vercel so only your backend can call the worker.
+5. **Environment:** configure WhatsApp Cloud API credentials (for example `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, etc., depending on your implementation). Optionally add `WORKER_SECRET` and set the same value as `WHATSAPP_WORKER_SECRET` on Vercel so only your backend can call the worker.
 
 After deploy, set on **Vercel** (main backend):
 
