@@ -111,7 +111,7 @@ export async function sendTextMessage(
     console.log("[WhatsApp Cloud API] Header text sanitized", {
       to: maskPhone(recipient),
       originalLength: options.headerText.length,
-      sanitizedLength: sanitizedHeader.length,
+      sanitizedLength: sanitizedHeader?.length ?? 0,
     });
   }
   if (sanitizedBody !== truncatedBody) {
