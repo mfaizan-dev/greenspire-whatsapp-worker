@@ -21,15 +21,8 @@ function maskPhone(phone: string): string {
   return phone.replace(/\d(?=\d{4})/g, "*");
 }
 
-/**
- * WhatsApp template text params cannot contain new lines/tabs
- * and must not include more than 4 consecutive spaces.
- */
-function sanitizeTemplateParamText(input: string): string {
-  return input
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/ {5,}/g, "    ")
-    .trim();
+function removeNewLines(input: string): string {
+  return input.replace(/[\r\n]+/g, " ").trim();
 }
 
 export interface SendTextOptions {
@@ -94,6 +87,7 @@ export async function sendTextMessage(
     body.length > MAX_TEXT_BODY_LENGTH
       ? body.slice(0, MAX_TEXT_BODY_LENGTH)
       : body;
+  const bodyWithoutNewLines = removeNewLines(truncatedBody);
   if (body.length > MAX_TEXT_BODY_LENGTH) {
     console.log("[WhatsApp Cloud API] Body truncated", {
       original: body.length,
@@ -102,50 +96,31 @@ export async function sendTextMessage(
   }
 
   const url = getMessagesUrl();
-  const sanitizedHeader = options.headerText
-    ? sanitizeTemplateParamText(options.headerText)
-    : undefined;
-  const sanitizedBody = sanitizeTemplateParamText(truncatedBody);
-
-  if (options.headerText && sanitizedHeader !== options.headerText) {
-    console.log("[WhatsApp Cloud API] Header text sanitized", {
-      to: maskPhone(recipient),
-      originalLength: options.headerText.length,
-      sanitizedLength: sanitizedHeader?.length ?? 0,
-    });
-  }
-  if (sanitizedBody !== truncatedBody) {
-    console.log("[WhatsApp Cloud API] Body text sanitized", {
-      to: maskPhone(recipient),
-      originalLength: truncatedBody.length,
-      sanitizedLength: sanitizedBody.length,
-    });
-  }
 
   const components: Array<{
     type: string;
     parameters: Array<{ type: string; text: string }>;
   }> = [];
 
-  if (sanitizedHeader) {
+  if (options.headerText) {
     components.push({
       type: "header",
       parameters: [
         {
           type: "text",
-          text: sanitizedHeader,
+          text: options.headerText,
         },
       ],
     });
   }
 
-  if (sanitizedBody) {
+  if (truncatedBody) {
     components.push({
       type: "body",
       parameters: [
         {
           type: "text",
-          text: sanitizedBody,
+          text: bodyWithoutNewLines,
         },
       ],
     });
