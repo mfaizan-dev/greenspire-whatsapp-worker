@@ -21,6 +21,10 @@ export interface BulkSendResult {
   failed: number;
 }
 
+function maskPhone(phone: string): string {
+  return phone.replace(/\d(?=\d{4})/g, "*");
+}
+
 /**
  * Send text message to a list of phone numbers via WhatsApp Cloud API.
  * @see https://developers.facebook.com/docs/whatsapp/cloud-api/messages/text-messages
@@ -43,6 +47,12 @@ export async function sendBulkToPhones(
   console.log("[Worker] sendBulk: starting", {
     inputCount: phoneNumbers.length,
     normalizedCount: normalized.length,
+    templateName: options.templateName,
+    languageCode: options.languageCode,
+    hasHeaderText: Boolean(options.headerText),
+    textLength: text.length,
+    firstRawPhone: phoneNumbers[0] ?? null,
+    firstNormalizedPhone: normalized[0] ? maskPhone(normalized[0]) : null,
   });
 
   if (normalized.length === 0) {
@@ -59,6 +69,7 @@ export async function sendBulkToPhones(
       batchNumber: Math.floor(i / BULK_BATCH_SIZE) + 1,
       totalProcessed: i,
       total: normalized.length,
+      recipients: batch.map(maskPhone),
     });
 
     await Promise.all(
@@ -70,12 +81,12 @@ export async function sendBulkToPhones(
         })
           .then(() => {
             sent++;
-            console.log("[Worker] Sent to", to);
+            console.log("[Worker] Sent to", maskPhone(to));
           })
           .catch((err: unknown) => {
             failed++;
             const msg = err instanceof Error ? err.message : String(err);
-            console.error("[Worker] Failed to send to", to, msg);
+            console.error("[Worker] Failed to send to", maskPhone(to), msg);
           }),
       ),
     );

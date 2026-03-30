@@ -17,6 +17,10 @@ export function toE164Digits(phone: string): string {
   return phone.trim().replace(/\D/g, "");
 }
 
+function maskPhone(phone: string): string {
+  return phone.replace(/\d(?=\d{4})/g, "*");
+}
+
 export interface SendTextOptions {
   /** Template name configured in WhatsApp Cloud API. */
   templateName: string;
@@ -36,6 +40,7 @@ export interface WhatsAppCloudError {
     type: string;
     code: number;
     error_subcode?: number;
+    error_data?: { details?: string } | Record<string, unknown>;
     fbtrace_id?: string;
   };
 }
@@ -67,10 +72,11 @@ export async function sendTextMessage(
   }
 
   console.log("[WhatsApp Cloud API] Sending text message", {
-    to: recipient.replace(/\d(?=\d{4})/g, "*"),
+    to: maskPhone(recipient),
     bodyLength: body.length,
     templateName: options.templateName,
     languageCode: options.languageCode,
+    hasHeaderText: Boolean(options.headerText),
   });
 
   const truncatedBody =
@@ -131,6 +137,19 @@ export async function sendTextMessage(
     payload.template.components = components;
   }
 
+  console.log("[WhatsApp Cloud API] Payload prepared", {
+    to: maskPhone(recipient),
+    url,
+    templateName: options.templateName,
+    languageCode: options.languageCode,
+    componentCount: components.length,
+    components: components.map((c) => ({
+      type: c.type,
+      parameterCount: c.parameters.length,
+      textLengths: c.parameters.map((p) => p.text.length),
+    })),
+  });
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -144,7 +163,8 @@ export async function sendTextMessage(
 
   console.log("[WhatsApp Cloud API] Response", {
     status: res.status,
-    to: recipient.replace(/\d(?=\d{4})/g, "*"),
+    statusText: res.statusText,
+    to: maskPhone(recipient),
     response: json,
   });
 
@@ -155,19 +175,33 @@ export async function sendTextMessage(
   if (!res.ok) {
     const err = data as WhatsAppCloudError;
     const msg = err?.error?.message ?? `HTTP ${res.status}: ${res.statusText}`;
+    const details =
+      typeof err?.error?.error_data === "object"
+        ? JSON.stringify(err.error.error_data)
+        : undefined;
     console.error("[WhatsApp Cloud API] Send failed", {
       status: res.status,
-      to: recipient.replace(/\d(?=\d{4})/g, "*"),
+      statusText: res.statusText,
+      to: maskPhone(recipient),
       error: msg,
+      code: err?.error?.code,
+      subcode: err?.error?.error_subcode,
+      fbtraceId: err?.error?.fbtrace_id,
+      details,
+      templateName: options.templateName,
+      languageCode: options.languageCode,
+      sentComponents: payload?.template?.components ?? [],
     });
-    throw new Error(`WhatsApp Cloud API error: ${msg}`);
+    throw new Error(
+      `WhatsApp Cloud API error: ${msg}${details ? ` | details: ${details}` : ""}`,
+    );
   }
 
   const success = data as { messages?: Array<{ id: string }> };
   const messageId = success?.messages?.[0]?.id;
   if (!messageId) {
     console.error("[WhatsApp Cloud API] Unexpected response: no message ID", {
-      to: recipient.replace(/\d(?=\d{4})/g, "*"),
+      to: maskPhone(recipient),
       response: data,
     });
     throw new Error("WhatsApp Cloud API did not return a message ID");
@@ -175,7 +209,7 @@ export async function sendTextMessage(
 
   console.log("[WhatsApp Cloud API] Message sent", {
     messageId,
-    to: recipient.replace(/\d(?=\d{4})/g, "*"),
+    to: maskPhone(recipient),
   });
   return { messageId };
 }
