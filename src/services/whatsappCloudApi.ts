@@ -22,7 +22,16 @@ function maskPhone(phone: string): string {
 }
 
 function removeNewLines(input: string): string {
-  return input.replace(/[\r\n]+/g, " ").trim();
+  const singleLine = input.replace(/[\r\n]+/g, " ").trim();
+  const LTR_MARK = "\u200E";
+  const phoneLikePattern = /(?<!\S)(?:\+?\d[\d()\-\s]{5,}\d)(?!\S)/g;
+
+  return singleLine.replace(phoneLikePattern, (segment) => {
+    if (segment.startsWith(LTR_MARK) && segment.endsWith(LTR_MARK)) {
+      return segment;
+    }
+    return `${LTR_MARK}${segment}${LTR_MARK}`;
+  });
 }
 
 export interface SendTextOptions {
